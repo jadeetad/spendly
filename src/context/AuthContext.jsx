@@ -1,21 +1,59 @@
-import { createContext, useContext, useState } from "react"
-
-// This is a simple local auth context.
-// Later you'll replace this with Supabase's useSession() hook.
-// For now it lets the app know if someone is "signed in" or not.
+import { createContext, useContext, useState, useEffect } from "react"
+import { supabase } from "../lib/supabase"
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  // user = null means guest. user = { name, email, persona } means signed in.
-  const [user, setUser] = useState(null)
+  const [user, setUser]       = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  const signIn = (userData) => setUser(userData)
-  const signOut = () => setUser(null)
+  useEffect(() => {
+    // On mount — check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) loadProfile(session.user)
+      else setLoading(false)
+    })
+
+    // Listen for sign in / sign out events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) loadProfile(session.user)
+      else { setUser(null); setLoading(false) }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function loadProfile(authUser) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", authUser.id)
+      .single()
+
+    setUser({
+      id:       authUser.id,
+      email:    authUser.email,
+      name:     profile?.name    || authUser.email.split("@")[0],
+      persona:  profile?.persona || "student",
+      currency: profile?.currency || "NGN",
+    })
+    setLoading(false)
+  }
+
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+  }
+
+  // refreshUser — call after updating profile in Settings
+  const refreshUser = async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (authUser) await loadProfile(authUser)
+  }
 
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut }}>
-      {children}
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
+      {loading ? null : children}
     </AuthContext.Provider>
   )
 }

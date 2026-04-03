@@ -1,13 +1,12 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { useNavigate, Link } from "react-router-dom"
-import { useAuth } from "../context/AuthContext"
+import { supabase } from "../lib/supabase"
 
 const C = { indigo:"#3D39C4", pale:"#EEEEFF", bg:"#F8F8FA", surface:"#fff", text:"#18172E", muted:"#6B6980", border:"rgba(61,57,196,0.12)" }
 
 export default function SignIn() {
-  const navigate    = useNavigate()
-  const { signIn }  = useAuth()
+  const navigate = useNavigate()
   const [form, setForm]       = useState({ email:"", password:"" })
   const [error, setError]     = useState("")
   const [loading, setLoading] = useState(false)
@@ -20,18 +19,21 @@ export default function SignIn() {
     if (!form.email || !form.password) { setError("Please fill in all fields."); return }
     setLoading(true)
 
-    // TODO: replace mock with real Supabase auth:
-    // const { data, error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
-    // if (error) { setError(error.message); setLoading(false); return }
-    // signIn({ name: data.user.user_metadata.name, email: data.user.email, persona: data.user.user_metadata.persona })
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email:    form.email,
+      password: form.password,
+    })
 
-    // Mock sign-in for now — uses email prefix as name
-    setTimeout(() => {
-      const mockName = form.email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-      signIn({ name: mockName, email: form.email, persona: "student" })
+    if (authError) {
+      setError(authError.message === "Invalid login credentials"
+        ? "Incorrect email or password."
+        : authError.message)
       setLoading(false)
-      navigate("/dashboard")
-    }, 1000)
+      return
+    }
+
+    // AuthContext listener picks up the session automatically
+    navigate("/dashboard")
   }
 
   return (
@@ -47,7 +49,6 @@ export default function SignIn() {
             </div>
             <span style={s.logoTxt}>Spend<span style={{ color:"#A39FF5" }}>ly</span></span>
           </Link>
-
           <div style={{ marginTop:"auto", marginBottom:"auto" }}>
             <motion.blockquote style={s.quote}
               initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.55 }}>
@@ -61,15 +62,10 @@ export default function SignIn() {
               </div>
             </div>
           </div>
-
           <motion.div style={s.decoCard}
             animate={{ y:[0,-7,0] }} transition={{ duration:4, repeat:Infinity, ease:"easeInOut" }}>
-            <div style={{ fontSize:".6rem", color:"rgba(255,255,255,.4)", marginBottom:4, fontFamily:"'Syne',sans-serif", textTransform:"uppercase", letterSpacing:".08em" }}>This month</div>
-            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:"1.2rem", fontWeight:800, color:"#fff" }}>₦84,200</div>
-            <div style={{ fontSize:".7rem", color:"rgba(255,255,255,.4)", marginTop:2 }}>3 splurges detected</div>
-            <div style={{ marginTop:10, height:3, background:"rgba(255,255,255,.1)", borderRadius:100 }}>
-              <div style={{ width:"62%", height:"100%", background:"#A39FF5", borderRadius:100 }}/>
-            </div>
+            <div style={{ fontSize:".6rem", color:"rgba(255,255,255,.4)", marginBottom:4, fontFamily:"'Syne',sans-serif", textTransform:"uppercase", letterSpacing:".08em" }}>Your data. Your insights.</div>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:"1rem", fontWeight:700, color:"#fff", lineHeight:1.4 }}>AI-powered spending analysis personalised to your life.</div>
           </motion.div>
         </div>
       </div>
@@ -86,10 +82,11 @@ export default function SignIn() {
             <div>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:".4rem" }}>
                 <label style={s.label}>Password</label>
-                <Link to="/forgot-password" style={{ fontSize:".72rem", color:C.indigo, fontWeight:600, textDecoration:"none" }}>Forgot?</Link>
+                <span style={{ fontSize:".72rem", color:C.indigo, fontWeight:600, cursor:"pointer" }}>Forgot?</span>
               </div>
               <div style={{ position:"relative" }}>
-                <input name="password" type={show?"text":"password"} placeholder="Your password" value={form.password} onChange={handleChange}
+                <input name="password" type={show?"text":"password"} placeholder="Your password"
+                  value={form.password} onChange={handleChange}
                   style={{ ...s.input, paddingRight:"2.6rem" }}/>
                 <button type="button" onClick={() => setShow(!show)} style={s.eyeBtn}>
                   <svg width="15" height="15" fill="none" viewBox="0 0 15 15">
@@ -111,7 +108,10 @@ export default function SignIn() {
 
           <div style={s.divider}><div style={s.divLine}/><span style={s.divTxt}>or</span><div style={s.divLine}/></div>
 
-          <motion.button style={s.googleBtn} whileHover={{ borderColor:C.indigo }} whileTap={{ scale:.98 }}>
+          <motion.button style={s.googleBtn} whileTap={{ scale:.98 }}
+            onClick={async () => {
+              await supabase.auth.signInWithOAuth({ provider:"google", options:{ redirectTo: window.location.origin+"/dashboard" } })
+            }}>
             <GoogleIcon/> Continue with Google
           </motion.button>
 
@@ -169,6 +169,6 @@ const s = {
   divider:    { display:"flex", alignItems:"center", gap:".7rem", margin:"1.3rem 0" },
   divLine:    { flex:1, height:1, background:"rgba(61,57,196,0.1)" },
   divTxt:     { fontSize:".72rem", color:"#9999BB" },
-  googleBtn:  { width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:9, background:"#fff", border:"1.5px solid rgba(61,57,196,0.15)", borderRadius:9, padding:".72rem", fontSize:".86rem", fontWeight:600, color:"#18172E", fontFamily:"'DM Sans',sans-serif", cursor:"pointer", transition:"border-color .2s" },
+  googleBtn:  { width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:9, background:"#fff", border:"1.5px solid rgba(61,57,196,0.15)", borderRadius:9, padding:".72rem", fontSize:".86rem", fontWeight:600, color:"#18172E", fontFamily:"'DM Sans',sans-serif", cursor:"pointer" },
   switchTxt:  { fontSize:".8rem", color:"#6B6980", textAlign:"center", marginTop:"1.3rem" },
 }
